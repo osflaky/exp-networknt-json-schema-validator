@@ -1,0 +1,150 @@
+/*
+ * Copyright (c) 2024 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.networknt.schema;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
+import com.networknt.schema.serialization.NodeReader;
+
+import tools.jackson.core.json.JsonReadFeature;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Test MultipleOfValidator validator.
+ */
+class MultipleOfValidatorTest {
+    String schemaData = "{" +
+            "  \"type\": \"object\"," +
+            "  \"properties\": {" +
+            "    \"value1\": {" +
+            "      \"type\": \"number\"," +
+            "      \"multipleOf\": 0.01" +
+            "    }," +
+            "    \"value2\": {" +
+            "      \"type\": \"number\"," +
+            "      \"multipleOf\": 0.01" +
+            "    }," +
+            "    \"value3\": {" +
+            "      \"type\": \"number\"," +
+            "      \"multipleOf\": 0.01" +
+            "    }" +
+            "  }" +
+            "}";
+
+    @Test
+    void test() {
+        SchemaRegistry factory = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+        Schema schema = factory.getSchema(schemaData);
+        String inputData = "{\"value1\":123.892,\"value2\":123456.2934,\"value3\":123.123}";
+        String validData = "{\"value1\":123.89,\"value2\":123456,\"value3\":123.010}";
+        
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertEquals(3, messages.size());
+        assertEquals(3, messages.stream().filter(m -> "multipleOf".equals(m.getKeyword())).count());
+        
+        messages = schema.validate(validData, InputFormat.JSON);
+        assertEquals(0, messages.size());
+    }
+
+    @Test
+    void testTypeLoose() {
+        SchemaRegistry factory = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+        Schema schema = factory.getSchema(schemaData);
+        
+        String inputData = "{\"value1\":\"123.892\",\"value2\":\"123456.2934\",\"value3\":123.123}";
+        String validTypeLooseInputData = "{\"value1\":\"123.89\",\"value2\":\"123456.29\",\"value3\":123.12}";
+        
+        // Without type loose this has 2 type and 1 multipleOf errors
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertEquals(3, messages.size());
+        assertEquals(2, messages.stream().filter(m -> "type".equals(m.getKeyword())).count());
+        assertEquals(1, messages.stream().filter(m -> "multipleOf".equals(m.getKeyword())).count());
+        
+        // 2 type errors
+        messages = schema.validate(validTypeLooseInputData, InputFormat.JSON);
+        assertEquals(2, messages.size());
+        assertEquals(2, messages.stream().filter(m -> "type".equals(m.getKeyword())).count());
+        
+        // With type loose this has 3 multipleOf errors
+        SchemaRegistryConfig config = SchemaRegistryConfig.builder().typeLoose(true).build();
+        factory = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12, builder -> builder.schemaRegistryConfig(config));
+        Schema typeLoose = factory.getSchema(schemaData);
+        messages = typeLoose.validate(inputData, InputFormat.JSON);
+        assertEquals(3, messages.size());
+        assertEquals(3, messages.stream().filter(m -> "multipleOf".equals(m.getKeyword())).count());
+        
+        // No errors
+        messages = typeLoose.validate(validTypeLooseInputData, InputFormat.JSON);
+        assertEquals(0, messages.size());
+    }
+
+    @Test
+    void messageFormatPrecision() {
+        String schemaData = "{ \"type\": \"object\", \"properties\": { \"value1\": { \"type\": \"number\", \"multipleOf\": 0.00001 } } }";
+        SchemaRegistry factory = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+        Schema schema = factory.getSchema(schemaData);
+        String inputData = "{\"value1\":123.000001}";
+
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertEquals("must be multiple of 0.00001", messages.get(0).getMessage());
+    }
+
+    @Test
+    void nonFinite() {
+        String schemaData = "{\r\n"
+                + "  \"multipleOf\": 10\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_4,
+                builder -> builder.nodeReader(NodeReader.builder()
+                        .jsonMapper(JsonMapper.builder().enable(JsonReadFeature.ALLOW_NON_NUMERIC_NUMBERS).build())
+                        .build()))
+                .getSchema(schemaData);
+        List<Error> errors = schema.validate("NaN", InputFormat.JSON);
+        assertEquals(0, errors.size());
+        errors = schema.validate("Infinity", InputFormat.JSON);
+        assertEquals(0, errors.size());
+        errors = schema.validate("-Infinity", InputFormat.JSON);
+        assertEquals(0, errors.size());
+    }
+
+    @Test
+    void nonFiniteSchemaShouldBeIgnored() {
+        String schemaData = "{\r\n"
+                + "  \"multipleOf\": NaN\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_4,
+                builder -> builder.nodeReader(NodeReader.builder()
+                        .jsonMapper(JsonMapper.builder().enable(JsonReadFeature.ALLOW_NON_NUMERIC_NUMBERS).build())
+                        .build()))
+                .getSchema(schemaData);
+        List<Error> errors = schema.validate("NaN", InputFormat.JSON);
+        assertEquals(0, errors.size());
+    }
+
+    @Test
+    void stringSchemaShouldBeIgnored() {
+        String schemaData = "{\r\n"
+                + "  \"multipleOf\": \"test\"\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_4).getSchema(schemaData);
+        List<Error> errors = schema.validate("10", InputFormat.JSON);
+        assertEquals(0, errors.size());
+    }
+}

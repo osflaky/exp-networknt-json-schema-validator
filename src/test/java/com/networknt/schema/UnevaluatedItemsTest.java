@@ -1,0 +1,18 @@
+package com.networknt.schema;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.DynamicNode;
+import org.junit.jupiter.api.TestFactory;
+
+import java.util.stream.Stream;
+
+@DisplayName("Unevaluated Items")
+class UnevaluatedItemsTest extends AbstractJsonSchemaTestSuite {
+
+    @TestFactory
+    @DisplayName("Draft 2019-09")
+    Stream<DynamicNode> draft201909() {
+        return createTests(SpecificationVersion.DRAFT_2019_09, "src/test/resources/schema/unevaluatedTests/unevaluated-items-tests.json");
+    }
+
+}

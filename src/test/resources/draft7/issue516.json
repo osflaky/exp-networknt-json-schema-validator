@@ -1,0 +1,144 @@
+[
+  {
+    "description": "issue516",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "locationName": {
+          "type": "string"
+        },
+        "activities": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "activityType",
+                  "weight",
+                  "height"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activityType": {
+                    "enum": [
+                      "machine"
+                    ]
+                  },
+                  "weight": {
+                    "type": "integer"
+                  },
+                  "height": {
+                    "type": "integer"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "activityType",
+                  "chemicalCharacteristic"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activityType": {
+                    "enum": [
+                      "chemical"
+                    ]
+                  },
+                  "chemicalCharacteristic": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "chemicalName"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "commonName": {
+                            "type": "string"
+                          },
+                          "chemicalName": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "chemicalName"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "categoryName": {
+                            "type": "string"
+                          },
+                          "chemicalName": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "tests": [
+      {
+        "description": "OneOfValidator is filtering out the required errors if all the oneOf schemas are having the issues",
+        "data": {
+          "locationName": "factoryLocation",
+          "activities": [
+            {
+              "activityType": "machine",
+              "age": "(additionalProperty not allowed)",
+              "height": 10.5
+            },
+            {
+              "activityType": "chemical",
+              "toxic": "(additionalProperty not allowed)",
+              "chemicalCharacteristic": {
+                "commonName": "methane",
+                "chemicalName": "CH4"
+              }
+            },
+            {
+              "activityType": "chemical",
+              "toxic": "(additionalProperty not allowed)",
+              "chemicalCharacteristic": {
+                "name": "methane",
+                "categoryName": "gasses",
+                "chemicalName": "CH4"
+              }
+            }
+          ]
+        },
+        "valid": false,
+        "errors": [
+          "/activities/0: must be valid to one and only one schema, but 0 are valid",
+          "/activities/0: property 'age' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/0: required property 'chemicalCharacteristic' not found",
+          "/activities/0: property 'height' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/0: required property 'weight' not found",
+          "/activities/1: must be valid to one and only one schema, but 0 are valid",
+          "/activities/1: property 'chemicalCharacteristic' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/1: required property 'height' not found",
+          "/activities/1: property 'toxic' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/1: required property 'weight' not found",
+          "/activities/2: must be valid to one and only one schema, but 0 are valid",
+          "/activities/2: property 'chemicalCharacteristic' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/2/chemicalCharacteristic: must be valid to one and only one schema, but 0 are valid",
+          "/activities/2/chemicalCharacteristic: property 'categoryName' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/2/chemicalCharacteristic: property 'name' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/2: required property 'height' not found",
+          "/activities/2: property 'toxic' is not defined in the schema and the schema does not allow additional properties",
+          "/activities/2: required property 'weight' not found"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,181 @@
+/*
+ * Copyright (c) 2016 Network New Technologies Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.networknt.schema.keyword;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.DecimalNode;
+import tools.jackson.databind.node.DoubleNode;
+import com.networknt.schema.ExecutionContext;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaLocation;
+import com.networknt.schema.path.NodePath;
+import com.networknt.schema.utils.JsonNodeTypes;
+import com.networknt.schema.utils.JsonType;
+import com.networknt.schema.utils.TypeFactory;
+import com.networknt.schema.SchemaContext;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * {@link KeywordValidator} for enum.
+ */
+public class EnumValidator extends BaseKeywordValidator implements KeywordValidator {
+    private final Set<JsonNode> nodes;
+    private final String error;
+
+    static String asString(JsonNode node) {
+        if (node.isObject() || node.isArray() || node.isString()) {
+            // toString for isString is so that there are quotes
+            return node.toString();
+        }
+        return node.asString();
+    }
+    
+    public EnumValidator(SchemaLocation schemaLocation, JsonNode schemaNode, Schema parentSchema, SchemaContext schemaContext) {
+        super(KeywordType.ENUM, schemaNode, schemaLocation, parentSchema, schemaContext);
+        if (schemaNode != null && schemaNode.isArray()) {
+            nodes = new HashSet<>();
+            StringBuilder sb = new StringBuilder();
+
+            sb.append('[');
+            String separator = "";
+
+            for (JsonNode n : schemaNode) {
+                if (n.isNumber()) {
+                    // convert to DecimalNode for number comparison
+                    nodes.add(processNumberNode(n));
+                } else if (n.isArray()) {
+                    ArrayNode a = processArrayNode((ArrayNode) n);
+                    nodes.add(a);
+                } else {
+                    nodes.add(n);
+                }
+
+                sb.append(separator);
+                sb.append(asString(n));
+                separator = ", ";
+            }
+
+            // Whether null is accepted depends on the ancestors the value is
+            // reached through, which is only known during validation. This
+            // just reports null as permitted when the owning schema says so.
+            if (schemaContext.isNullableKeywordEnabled()
+                    && JsonNodeTypes.isNodeNullable(parentSchema.getSchemaNode())) {
+                separator = ", ";
+                sb.append(separator);
+                sb.append("null");
+            }
+            sb.append(']');
+
+            error = sb.toString();
+        } else {
+            nodes = Collections.emptySet();
+            error = "[none]";
+        }
+    }
+
+    public void validate(ExecutionContext executionContext, JsonNode node, JsonNode rootNode, NodePath instanceLocation) {
+        if (node.isNull() && this.schemaContext.isNullableKeywordEnabled()
+                && JsonNodeTypes.isNullableAncestor(executionContext)) {
+            return;
+        }
+        if (node.isNumber()) {
+            node = processNumberNode(node);
+        } else if (node.isArray()) {
+            node = processArrayNode((ArrayNode) node);
+        }
+        if (!nodes.contains(node) && !( this.schemaContext.getSchemaRegistryConfig().isTypeLoose() && isTypeLooseContainsInEnum(node))) {
+            executionContext.addError(error().instanceNode(node).instanceLocation(instanceLocation)
+                    .evaluationPath(executionContext.getEvaluationPath()).locale(executionContext.getExecutionConfig().getLocale())
+                    .arguments(error).build());
+        }
+    }
+
+    /**
+     * Check whether enum contains the value of the JsonNode if the typeLoose is enabled.
+     *
+     * @param node JsonNode to check
+     */
+    private boolean isTypeLooseContainsInEnum(JsonNode node) {
+        if (TypeFactory.getValueNodeType(node, this.schemaContext.getSchemaRegistryConfig()) == JsonType.STRING) {
+            String nodeText = node.asString();
+            for (JsonNode n : nodes) {
+                String value = n.asString();
+                if (value != null && value.equals(nodeText)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Processes the number and ensures trailing zeros are stripped.
+     * 
+     * @param n the node
+     * @return the node
+     */
+    protected JsonNode processNumberNode(JsonNode n) {
+        if (JsonNodeTypes.isNonFiniteNumber(n)) {
+            if (n.isDouble()) { // If it is already a DoubleNode don't create another one
+                return n;
+            }
+            return DoubleNode.valueOf(n.doubleValue());
+        }
+        return DecimalNode.valueOf(n.decimalValue().stripTrailingZeros());
+    }
+
+    /**
+     * Processes the array and ensures that numbers within have trailing zeroes stripped.
+     * 
+     * @param node the node
+     * @return the node
+     */
+    protected ArrayNode processArrayNode(ArrayNode node) {
+        if (!hasNumber(node)) {
+            return node;
+        }
+        ArrayNode a = node.deepCopy();
+        for (int x = 0; x < a.size(); x++) {
+            JsonNode v = a.get(x);
+            if (v.isNumber()) {
+                v = processNumberNode(v);
+                a.set(x, v);
+            }
+        }
+        return a;
+    }
+
+    /**
+     * Determines if the array node contains a number.
+     * 
+     * @param node the node
+     * @return the node
+     */
+    protected boolean hasNumber(ArrayNode node) {
+        for (int x = 0; x < node.size(); x++) {
+            JsonNode v = node.get(x);
+            if (v.isNumber()) {
+                return true;
+            }
+        }
+        return false;
+    }
+}

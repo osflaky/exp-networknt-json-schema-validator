@@ -1,0 +1,66 @@
+/*
+ * Copyright (c) 2020 Network New Technologies Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.networknt.schema.keyword;
+
+import tools.jackson.databind.JsonNode;
+import com.networknt.schema.ExecutionContext;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaLocation;
+import com.networknt.schema.path.NodePath;
+import com.networknt.schema.utils.JsonNodeTypes;
+import com.networknt.schema.SchemaContext;
+
+/**
+ * {@link KeywordValidator} for const.
+ */
+public class ConstValidator extends BaseKeywordValidator implements KeywordValidator {
+    public ConstValidator(SchemaLocation schemaLocation, JsonNode schemaNode,
+            Schema parentSchema, SchemaContext schemaContext) {
+        super(KeywordType.CONST, schemaNode, schemaLocation, parentSchema, schemaContext);
+    }
+
+    public void validate(ExecutionContext executionContext, JsonNode node, JsonNode rootNode, NodePath instanceLocation) {
+        if (schemaNode.isNumber() && node.isNumber()) {
+            boolean schemaIsNonFinite = JsonNodeTypes.isNonFiniteNumber(schemaNode);
+            boolean nodeIsNonFinite = JsonNodeTypes.isNonFiniteNumber(node);
+            if (schemaIsNonFinite != nodeIsNonFinite) {
+                executionContext.addError(error().instanceNode(node).instanceLocation(instanceLocation)
+                        .evaluationPath(executionContext.getEvaluationPath())
+                        .locale(executionContext.getExecutionConfig().getLocale())
+                        .arguments(schemaNode.asString(schemaNode.toString()), node.asString()).build());                
+            } else if (schemaIsNonFinite || nodeIsNonFinite) {
+                // Handle the NaN, Infinity and -Infinity cases
+                // Note that Double.compare(NaN, NaN) == 0 as this is comparing constants and not the numeric operation 
+                if (Double.compare(schemaNode.doubleValue(), node.doubleValue()) != 0) {
+                    executionContext.addError(error().instanceNode(node).instanceLocation(instanceLocation)
+                            .evaluationPath(executionContext.getEvaluationPath())
+                            .locale(executionContext.getExecutionConfig().getLocale())
+                            .arguments(schemaNode.asString(schemaNode.toString()), node.asString()).build());
+                }
+            } else if (schemaNode.decimalValue().compareTo(node.decimalValue()) != 0) {
+                executionContext.addError(error().instanceNode(node).instanceLocation(instanceLocation)
+                        .evaluationPath(executionContext.getEvaluationPath())
+                        .locale(executionContext.getExecutionConfig().getLocale())
+                        .arguments(schemaNode.asString(schemaNode.toString()), node.asString()).build());
+            }
+        } else if (!schemaNode.equals(node)) {
+            executionContext.addError(error().instanceNode(node).instanceLocation(instanceLocation)
+                    .evaluationPath(executionContext.getEvaluationPath())
+                    .locale(executionContext.getExecutionConfig().getLocale())
+                    .arguments(schemaNode.asString(schemaNode.toString()), node.asString(node.toString())).build());
+        }
+    }
+}

@@ -1,0 +1,66 @@
+package com.networknt.schema;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
+
+class DependentRequiredTest {
+
+    static final String SCHEMA =
+        "{ " +
+            "   \"$schema\":\"https://json-schema.org/draft/2019-09/schema\"," +
+            "   \"type\": \"object\"," +
+            "   \"properties\": {" +
+            "       \"optional\": { \"type\": \"string\" }," +
+            "       \"requiredWhenOptionalPresent\": { \"type\": \"string\" }" +
+            "   }," +
+            "   \"dependentRequired\": {" +
+            "       \"optional\": [ \"requiredWhenOptionalPresent\" ]," +
+            "       \"otherOptional\": [ \"otherDependentRequired\" ]" +
+            "   }" +
+            "}";
+
+    private static final SchemaRegistry factory = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2019_09);
+    private static final Schema schema = factory.getSchema(SCHEMA);
+    private static final ObjectMapper mapper = new ObjectMapper();
+
+    @Test
+    void shouldReturnNoErrorMessagesForObjectWithoutOptionalField() throws IOException {
+
+        List<Error> messages = whenValidate("{}");
+
+        assertThat(messages, empty());
+    }
+
+    @Test
+    void shouldReturnErrorMessageForObjectWithoutDependentRequiredField() throws IOException {
+
+        List<Error> messages = whenValidate("{ \"optional\": \"present\" }");
+
+        assertThat(
+            messages.stream().map(Error::toString).collect(Collectors.toList()),
+            contains(": has a missing property 'requiredWhenOptionalPresent' which is dependent required because 'optional' is present"));
+    }
+
+    @Test
+    void shouldReturnNoErrorMessagesForObjectWithOptionalAndDependentRequiredFieldSet() throws JacksonException {
+
+        List<Error> messages =
+            whenValidate("{ \"optional\": \"present\", \"requiredWhenOptionalPresent\": \"present\" }");
+
+        assertThat(messages, empty());
+    }
+
+    private static List<Error> whenValidate(String content) throws JacksonException {
+        return schema.validate(mapper.readTree(content));
+    }
+
+}

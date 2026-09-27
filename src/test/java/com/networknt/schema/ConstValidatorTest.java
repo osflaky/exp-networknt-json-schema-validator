@@ -1,0 +1,165 @@
+/*
+ * Copyright (c) 2023 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.networknt.schema;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
+import com.networknt.schema.i18n.ResourceBundleMessageSource;
+import com.networknt.schema.serialization.NodeReader;
+
+import tools.jackson.core.json.JsonReadFeature;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Test for ConstValidator.
+ */
+class ConstValidatorTest {
+
+    @Test
+    void localeMessageOthers() {
+        String schemaData = "{\r\n"
+                + "  \"const\": \"aa\"\r\n"
+                + "}";
+        SchemaRegistryConfig config = SchemaRegistryConfig.builder()
+                .messageSource(new ResourceBundleMessageSource("const-messages-override", "jsv-messages"))
+                .build();
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12, builder -> builder.schemaRegistryConfig(config)).getSchema(schemaData);
+        String inputData = "\"bb\"";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertEquals(": must be the constant value 'aa' but is 'bb'", messages.iterator().next().toString());
+    }
+
+    @Test
+    void localeMessageNumber() {
+        String schemaData = "{\r\n"
+                + "  \"const\": 1\r\n"
+                + "}";
+        SchemaRegistryConfig config = SchemaRegistryConfig.builder()
+                .messageSource(new ResourceBundleMessageSource("const-messages-override", "jsv-messages"))
+                .build();
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12, builder -> builder.schemaRegistryConfig(config)).getSchema(schemaData);
+        String inputData = "2";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertEquals(": must be the constant value '1' but is '2'", messages.iterator().next().toString());
+    }
+
+    @Test
+    void validOthers() {
+        String schemaData = "{\r\n"
+                + "  \"const\": \"aa\"\r\n"
+                + "}";
+        SchemaRegistryConfig config = SchemaRegistryConfig.builder().build();
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12, builder -> builder.schemaRegistryConfig(config)).getSchema(schemaData);
+        String inputData = "\"aa\"";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertTrue(messages.isEmpty());
+    }
+
+    @Test
+    void validNumber() {
+        String schemaData = "{\r\n"
+                + "  \"const\": 1234.56789\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12).getSchema(schemaData);
+        String inputData = "1234.56789";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertTrue(messages.isEmpty());
+    }
+
+    @Test
+    void invalidNumber() {
+        String schemaData = "{\r\n"
+                + "  \"const\": 1234.56789\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12).getSchema(schemaData);
+        String inputData = "\"1234.56789\"";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertFalse(messages.isEmpty());
+    }
+
+    @Test
+    void nan() {
+        String schemaData = "{\r\n"
+                + "  \"const\": NaN\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+                builder -> builder.nodeReader(NodeReader.builder()
+                        .jsonMapper(JsonMapper.builder().enable(JsonReadFeature.ALLOW_NON_NUMERIC_NUMBERS).build())
+                        .build()))
+                .getSchema(schemaData);
+        String inputData = "NaN";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertTrue(messages.isEmpty()); // Note that Double.compare(NaN, NaN) == 0 as this is comparing constants and
+                                        // not the numeric operation
+    }
+
+    @Test
+    void infinity() {
+        String schemaData = "{\r\n"
+                + "  \"const\": Infinity\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+                builder -> builder.nodeReader(NodeReader.builder()
+                        .jsonMapper(JsonMapper.builder().enable(JsonReadFeature.ALLOW_NON_NUMERIC_NUMBERS).build())
+                        .build()))
+                .getSchema(schemaData);
+        String inputData = "Infinity";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertTrue(messages.isEmpty());
+    }
+
+    @Test
+    void negativeInfinity() {
+        String schemaData = "{\r\n"
+                + "  \"const\": -Infinity\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+                builder -> builder.nodeReader(NodeReader.builder()
+                        .jsonMapper(JsonMapper.builder().enable(JsonReadFeature.ALLOW_NON_NUMERIC_NUMBERS).build())
+                        .build()))
+                .getSchema(schemaData);
+        String inputData = "-Infinity";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertTrue(messages.isEmpty());
+    }
+
+    @Test
+    void nonFinite() {
+        String schemaData = "{\r\n"
+                + "  \"const\": 10\r\n"
+                + "}";
+        Schema schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+                builder -> builder.nodeReader(NodeReader.builder()
+                        .jsonMapper(JsonMapper.builder().enable(JsonReadFeature.ALLOW_NON_NUMERIC_NUMBERS).build())
+                        .build()))
+                .getSchema(schemaData);
+        String inputData = "-Infinity";
+        List<Error> messages = schema.validate(inputData, InputFormat.JSON);
+        assertFalse(messages.isEmpty());
+        inputData = "Infinity";
+        messages = schema.validate(inputData, InputFormat.JSON);
+        assertFalse(messages.isEmpty());
+        inputData = "NaN";
+        messages = schema.validate(inputData, InputFormat.JSON);
+        assertFalse(messages.isEmpty());
+    }
+}
